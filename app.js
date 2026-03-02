@@ -1,71 +1,16 @@
 // ── Kit Day — app.js ──────────────────────────────────────────────
 
-const TEAMS = [
-  {
-    id: 'barcelona',
-    name: 'Barcelona',
-    colors: ['#A50044', '#004D98'],
-    phrase: 'Més que un club — mais que uma desculpa. Bora treinar!',
-    shield: `<svg viewBox="0 0 80 90" xmlns="http://www.w3.org/2000/svg">
-      <path d="M40,5 L75,20 L75,55 Q75,80 40,88 Q5,80 5,55 L5,20 Z" fill="#A50044" stroke="#FFD700" stroke-width="2"/>
-      <rect x="5" y="20" width="33" height="35" fill="#004D98"/>
-      <rect x="5" y="20" width="33" height="12" fill="#A50044"/>
-      <rect x="5" y="20" width="12" height="35" fill="#A50044"/>
-      <text x="58" y="58" font-size="18" fill="#FFD700" font-weight="bold" text-anchor="middle">FCB</text>
-    </svg>`
-  },
-  {
-    id: 'chelsea',
-    name: 'Chelsea',
-    colors: ['#034694', '#034694'],
-    phrase: 'Keep the Blue Flag flying — e os músculos também.',
-    shield: `<svg viewBox="0 0 80 90" xmlns="http://www.w3.org/2000/svg">
-      <path d="M40,5 L75,20 L75,55 Q75,80 40,88 Q5,80 5,55 L5,20 Z" fill="#034694" stroke="#FFD700" stroke-width="2"/>
-      <circle cx="40" cy="48" r="18" fill="#FFD700" opacity="0.9"/>
-      <circle cx="40" cy="48" r="13" fill="#034694"/>
-      <text x="40" y="53" font-size="11" fill="#FFD700" font-weight="bold" text-anchor="middle">CFC</text>
-    </svg>`
-  },
-  {
-    id: 'saopaulo',
-    name: 'São Paulo FC',
-    colors: ['#E30613', '#000000'],
-    phrase: 'Tricolor do povo, camisa de guerreiro. Vai com tudo!',
-    shield: `<svg viewBox="0 0 80 90" xmlns="http://www.w3.org/2000/svg">
-      <path d="M40,5 L75,20 L75,55 Q75,80 40,88 Q5,80 5,55 L5,20 Z" fill="white" stroke="#E30613" stroke-width="2"/>
-      <rect x="5" y="20" width="70" height="12" fill="#E30613"/>
-      <rect x="5" y="32" width="70" height="12" fill="#000000"/>
-      <rect x="5" y="44" width="70" height="11" fill="#E30613"/>
-      <text x="40" y="72" font-size="9" fill="#000" font-weight="bold" text-anchor="middle">SPFC</text>
-    </svg>`
-  },
-  {
-    id: 'bayern',
-    name: 'Bayern de Munique',
-    colors: ['#DC052D', '#0066B2'],
-    phrase: 'Mia san mia — e hoje somos atletas. Sem frescura!',
-    shield: `<svg viewBox="0 0 80 90" xmlns="http://www.w3.org/2000/svg">
-      <path d="M40,5 L75,20 L75,55 Q75,80 40,88 Q5,80 5,55 L5,20 Z" fill="#DC052D" stroke="#0066B2" stroke-width="2"/>
-      <rect x="22" y="18" width="14" height="14" fill="#0066B2"/>
-      <rect x="36" y="18" width="14" height="14" fill="white"/>
-      <rect x="22" y="32" width="14" height="14" fill="white"/>
-      <rect x="36" y="32" width="14" height="14" fill="#0066B2"/>
-      <rect x="22" y="46" width="14" height="14" fill="#0066B2"/>
-      <rect x="36" y="46" width="14" height="14" fill="white"/>
-      <rect x="22" y="60" width="14" height="14" fill="white"/>
-      <rect x="36" y="60" width="14" height="14" fill="#0066B2"/>
-    </svg>`
-  }
-];
-
 // ── Storage helpers ─────────────────────────────────────────────
 function getStorage() {
   const defaults = {
     streak: 0,
     lastTraining: null,
-    lastAction: null, // 'trained' | 'skipped' | null
+    lastSkipped: null,
+    lastAction: null,
     notifHour: 7,
-    activeTeams: ['barcelona', 'chelsea', 'saopaulo', 'bayern']
+    shirts: [],
+    // legacy compat
+    activeTeams: []
   };
   try {
     const saved = JSON.parse(localStorage.getItem('kitday') || '{}');
@@ -83,12 +28,12 @@ function todayKey() {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
-function getDailyTeam(activeTeams) {
+// Deterministic daily pick from collection based on date seed
+function getDailyShirt(shirts) {
+  if (!shirts || !shirts.length) return null;
   const d = new Date();
   const seed = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
-  const pool = TEAMS.filter(t => activeTeams.includes(t.id));
-  if (!pool.length) return TEAMS[0];
-  return pool[seed % pool.length];
+  return shirts[seed % shirts.length];
 }
 
 // ── Streak logic ─────────────────────────────────────────────────
@@ -97,14 +42,14 @@ function updateStreakOnTrain(storage) {
   const d = new Date();
   const yesterday = new Date(d);
   yesterday.setDate(d.getDate() - 1);
-  const yesterdayKey = `${yesterday.getFullYear()}-${yesterday.getMonth()}-${yesterday.getDate()}`;
+  const yKey = `${yesterday.getFullYear()}-${yesterday.getMonth()}-${yesterday.getDate()}`;
 
-  if (storage.lastTraining === today) return storage; // already trained today
+  if (storage.lastTraining === today) return storage;
 
-  if (storage.lastTraining === yesterdayKey) {
+  if (storage.lastTraining === yKey) {
     storage.streak = (storage.streak || 0) + 1;
   } else {
-    storage.streak = 1; // reset streak
+    storage.streak = 1;
   }
   storage.lastTraining = today;
   storage.lastAction = 'trained';
@@ -124,7 +69,7 @@ async function registerSW() {
 }
 
 // ── Notification scheduling ──────────────────────────────────────
-async function scheduleNotification(team, hourOfDay) {
+async function scheduleNotification(shirt, hourOfDay) {
   if (!('Notification' in window)) return;
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') return;
@@ -135,48 +80,72 @@ async function scheduleNotification(team, hourOfDay) {
   if (target <= now) target.setDate(target.getDate() + 1);
 
   const delayMs = target.getTime() - now.getTime();
-  const title = 'Kit Day 🏋️';
-  const body = `Hora do treino! Hoje você veste: ${team.name}. Não fura!`;
+  const title = 'Kit Day';
+  const body = shirt
+    ? `Hora do treino! Hoje você veste: ${shirt.name}. Bora!`
+    : 'Hora do treino! Abra o Kit Day.';
 
   const reg = await navigator.serviceWorker.ready;
   reg.active.postMessage({ type: 'SCHEDULE_NOTIFICATION', delayMs, title, body });
 }
 
-// ── UI rendering ─────────────────────────────────────────────────
+// ── UI rendering (index.html) ────────────────────────────────────
 function render() {
   const storage = getStorage();
   const today = todayKey();
-  const team = getDailyTeam(storage.activeTeams);
-  const alreadyActed = storage.lastAction && (storage.lastTraining === today || storage.lastAction === 'skipped' && storage.lastSkipped === today);
+  const shirt = getDailyShirt(storage.shirts);
   const trained = storage.lastTraining === today;
   const skipped = storage.lastSkipped === today;
 
-  // Update theme color
-  document.documentElement.style.setProperty('--team-primary', team.colors[0]);
-  document.documentElement.style.setProperty('--team-secondary', team.colors[1] || team.colors[0]);
-
-  // Shield
-  const shieldEl = document.getElementById('team-shield');
-  if (shieldEl) shieldEl.innerHTML = team.shield;
-
-  // Team name & phrase
-  const nameEl = document.getElementById('team-name');
-  if (nameEl) nameEl.textContent = team.name;
-
-  const phraseEl = document.getElementById('team-phrase');
-  if (phraseEl) phraseEl.textContent = team.phrase;
-
-  // Streak
+  // Streak counter
   const streakEl = document.getElementById('streak-count');
   if (streakEl) streakEl.textContent = storage.streak || 0;
 
-  // Card background
-  const card = document.getElementById('kit-card');
-  if (card) {
-    card.style.background = `linear-gradient(135deg, ${team.colors[0]} 0%, ${team.colors[1] || team.colors[0]} 100%)`;
+  const onboardEl = document.getElementById('onboarding');
+  const kitCardEl = document.getElementById('kit-card');
+
+  if (!storage.shirts || storage.shirts.length === 0) {
+    // Show onboarding
+    if (onboardEl) onboardEl.style.display = 'flex';
+    if (kitCardEl) kitCardEl.style.display = 'none';
+    const actionsEl = document.getElementById('actions');
+    if (actionsEl) actionsEl.style.display = 'none';
+    return;
   }
 
-  // Action buttons / status
+  if (onboardEl) onboardEl.style.display = 'none';
+  if (kitCardEl) kitCardEl.style.display = 'flex';
+
+  // Update card accent color
+  const accentColor = shirt.color || '#E10600';
+  document.documentElement.style.setProperty('--shirt-color', accentColor);
+
+  // Shirt photo or color swatch
+  const shirtImgEl = document.getElementById('shirt-img');
+  const shirtSwatchEl = document.getElementById('shirt-swatch');
+  if (shirtImgEl && shirtSwatchEl) {
+    if (shirt.photo) {
+      shirtImgEl.src = shirt.photo;
+      shirtImgEl.style.display = 'block';
+      shirtSwatchEl.style.display = 'none';
+    } else {
+      shirtImgEl.style.display = 'none';
+      shirtSwatchEl.style.display = 'flex';
+      shirtSwatchEl.style.background = accentColor;
+    }
+  }
+
+  // Name
+  const nameEl = document.getElementById('shirt-name');
+  if (nameEl) nameEl.textContent = shirt.name;
+
+  // Card accent border
+  if (kitCardEl) {
+    kitCardEl.style.borderColor = accentColor;
+    kitCardEl.style.boxShadow = `0 2px 24px ${accentColor}33`;
+  }
+
+  // Actions / status
   const actionsEl = document.getElementById('actions');
   const statusEl = document.getElementById('status-msg');
 
@@ -184,13 +153,15 @@ function render() {
     if (actionsEl) actionsEl.style.display = 'none';
     if (statusEl) {
       statusEl.style.display = 'block';
-      statusEl.innerHTML = `✅ Treino registrado! <strong>${storage.streak} dia${storage.streak > 1 ? 's' : ''} seguido${storage.streak > 1 ? 's' : ''}!</strong> 🔥`;
+      statusEl.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        <span>Treino registrado! <strong>${storage.streak} dia${storage.streak !== 1 ? 's' : ''} seguido${storage.streak !== 1 ? 's' : ''}!</strong></span>`;
     }
   } else if (skipped) {
     if (actionsEl) actionsEl.style.display = 'none';
     if (statusEl) {
-      statusEl.style.display = 'block';
-      statusEl.innerHTML = `⏭️ Você pulou hoje. Amanhã tem mais!`;
+      statusEl.style.display = 'flex';
+      statusEl.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/><line x1="19" y1="3" x2="19" y2="21"/></svg>
+        <span>Você pulou hoje. Amanhã tem mais!</span>`;
     }
   } else {
     if (actionsEl) actionsEl.style.display = 'flex';
@@ -198,13 +169,11 @@ function render() {
   }
 }
 
-// ── Button handlers ──────────────────────────────────────────────
 function onTrained() {
   let storage = getStorage();
   storage = updateStreakOnTrain(storage);
   saveStorage(storage);
   render();
-  // Haptic feedback
   if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
 }
 
@@ -216,7 +185,6 @@ function onSkip() {
   render();
 }
 
-// ── Init ─────────────────────────────────────────────────────────
 async function init() {
   render();
 
@@ -227,12 +195,15 @@ async function init() {
 
   await registerSW();
 
-  // Schedule notification if permission already granted
   if (Notification.permission === 'granted') {
     const storage = getStorage();
-    const team = getDailyTeam(storage.activeTeams);
-    scheduleNotification(team, storage.notifHour);
+    const shirt = getDailyShirt(storage.shirts);
+    scheduleNotification(shirt, storage.notifHour);
   }
 }
 
-document.addEventListener('DOMContentLoaded', init);
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}

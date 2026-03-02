@@ -1,7 +1,8 @@
-const CACHE_NAME = 'kit-day-v1';
+const CACHE_NAME = 'kit-day-v2';
 const ASSETS = [
   '/kit-day/',
   '/kit-day/index.html',
+  '/kit-day/collection.html',
   '/kit-day/settings.html',
   '/kit-day/app.js',
   '/kit-day/manifest.json',
@@ -9,7 +10,6 @@ const ASSETS = [
   '/kit-day/icon-512.svg'
 ];
 
-// Install: cache assets
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
@@ -17,7 +17,6 @@ self.addEventListener('install', event => {
   self.skipWaiting();
 });
 
-// Activate: clean old caches
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
@@ -27,17 +26,15 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
-// Fetch: cache-first strategy
 self.addEventListener('fetch', event => {
   event.respondWith(
     caches.match(event.request).then(cached => cached || fetch(event.request))
   );
 });
 
-// Push notification handler
 self.addEventListener('push', event => {
   const data = event.data ? event.data.json() : {};
-  const title = data.title || 'Kit Day 🏋️';
+  const title = data.title || 'Kit Day';
   const options = {
     body: data.body || 'Hora do treino! Vem ver qual camisa vestir hoje.',
     icon: '/kit-day/icon-192.svg',
@@ -49,7 +46,6 @@ self.addEventListener('push', event => {
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
-// Notification click
 self.addEventListener('notificationclick', event => {
   event.notification.close();
   event.waitUntil(
@@ -62,7 +58,6 @@ self.addEventListener('notificationclick', event => {
   );
 });
 
-// Message from app: schedule notification
 self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SCHEDULE_NOTIFICATION') {
     const { delayMs, title, body } = event.data;

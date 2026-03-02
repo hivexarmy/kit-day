@@ -1,12 +1,12 @@
 {
   "name": "Kit Day",
   "short_name": "Kit Day",
-  "description": "Qual camisa vestir no treino de hoje?",
+  "description": "Qual camiseta vestir no treino de hoje?",
   "start_url": "/kit-day/",
   "scope": "/kit-day/",
   "display": "standalone",
-  "background_color": "#111111",
-  "theme_color": "#E10600",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "orientation": "portrait",
   "icons": [
     {
